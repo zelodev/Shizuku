@@ -53,7 +53,16 @@ jobs:
           echo 'org.gradle.vfs.watch=true' >> gradle.properties
           
           ./gradlew :manager:assembleRelease
-          releaseName=manager/build/outputs/apk/release/shizuku.apk
+          ./gradlew :manager:assembleRelease :manager:assembleDebug
+          releaseName=`ls manager/build/outputs/apk/release/shizuku*-v*-release.apk | awk -F '(/|.apk)' '{print $6}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+
+          if ls manager/build/outputs/apk/release/shizuku*-v*-release.apk 1> /dev/null 2>&1; then
+            releaseName=`ls manager/build/outputs/apk/release/shizuku*-v*-release.apk | awk -F '(/|.apk)' '{print $6}'`
+            echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+          else
+            echo "Error: APK file not found." >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
