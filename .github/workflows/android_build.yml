@@ -53,7 +53,7 @@ jobs:
           echo 'org.gradle.vfs.watch=true' >> gradle.properties
           
           ./gradlew :manager:assembleRelease
-          releaseName=shizuku.apk
+          releaseName=manager/build/outputs/apk/release/shizuku.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
