@@ -2,29 +2,21 @@ name: Android CI
 
 on:
   workflow_dispatch:
-  workflow_call:
-
-permissions:
-  contents: write
-
-env:
-  GRADLE_OPTS: -Dkotlin.incremental=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
-
+  
 jobs:
   build:
     runs-on: ubuntu-20.04
 
     steps:
-      - name: Checkout Forked Repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           repository: zelodev/Shizuku
           ref: test
           fetch-depth: 0
-          submodules: true
+          submodules: 'recursive'
 
       - name: Write temporary key
-        if: hashFiles('key.jks') == '' && !steps.vars.outputs.HAS_SECRET
         run: |
           keytool -genkey -alias a -dname CN=_ -storepass passwd -keypass passwd -keystore key.jks
           echo KEYSTORE_PASSWORD=passwd >> signing.properties
@@ -39,11 +31,28 @@ jobs:
           java-version: "17"
           cache: "gradle"
 
+      - name: Cache Gradle Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            !~/.gradle/caches/build-cache-*
+          key: gradle-deps-app-${{ hashFiles('**/build.gradle') }}
+          restore-keys: |
+            gradle-deps
+            
+      - name: Cache Gradle Build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/build-cache-*
+          key: gradle-builds-app-${{ github.sha }}
+          restore-keys: |
+            gradle-builds
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
 
       - name: Build with Gradle
         id: buildWithGradle
@@ -51,21 +60,27 @@ jobs:
           echo 'org.gradle.caching=true' >> gradle.properties
           echo 'org.gradle.parallel=true' >> gradle.properties
           echo 'org.gradle.vfs.watch=true' >> gradle.properties
-          
-          ./gradlew :manager:assembleRelease
+          echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
           ./gradlew :manager:assembleRelease :manager:assembleDebug
           releaseName=`ls manager/build/outputs/apk/release/shizuku*-v*-release.apk | awk -F '(/|.apk)' '{print $6}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+          debugName=`ls manager/build/outputs/apk/debug/shizuku*-v*-debug.apk | awk -F '(/|.apk)' '{print $6}'` && echo "debugName=$debugName" >> $GITHUB_OUTPUT
 
-          if ls manager/build/outputs/apk/release/shizuku*-v*-release.apk 1> /dev/null 2>&1; then
-            releaseName=`ls manager/build/outputs/apk/release/shizuku*-v*-release.apk | awk -F '(/|.apk)' '{print $6}'`
-            echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
-          else
-            echo "Error: APK file not found." >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Upload artifact
+      - name: Upload release
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.buildWithGradle.outputs.releaseName }}
           path: "manager/build/outputs/apk/release/*.apk"
+          
+      - name: Upload debug
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.buildWithGradle.outputs.debugName }}
+          path: "manager/build/outputs/apk/debug/*.apk"
+          
+      - name: Upload mappings
+        uses: actions/upload-artifact@v4
+        with:
+          name: mappings
+          path: "manager/build/outputs/mapping/release"
