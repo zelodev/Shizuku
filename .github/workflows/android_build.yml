@@ -66,5 +66,5 @@ jobs:
       - name: Upload release
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.buildWithGradle.outputs.releaseName }}
+          merge-multiple: true
           path: '**/*.apk'
