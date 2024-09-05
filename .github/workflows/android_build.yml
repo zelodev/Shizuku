@@ -66,5 +66,4 @@ jobs:
       - name: Upload release
         uses: actions/upload-artifact@v4
         with:
-          merge-multiple: true
-          path: '**/*.apk'
+          path: '**/out/apk/shizuku*.apk'
