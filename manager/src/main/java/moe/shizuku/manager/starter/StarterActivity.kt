@@ -1,9 +1,6 @@
 package moe.shizuku.manager.starter
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -13,7 +10,6 @@ import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.BuildConfig
@@ -26,13 +22,14 @@ import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.app.AppBarActivity
 import moe.shizuku.manager.application
 import moe.shizuku.manager.databinding.StarterActivityBinding
+import moe.shizuku.manager.ktx.createDeviceProtectedStorageContextCompat
 import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
 import rikka.shizuku.Shizuku
+import java.io.File
 import java.net.ConnectException
 import javax.net.ssl.SSLProtocolException
-import kotlin.collections.ArrayList
 
 private class NotRootedException : Exception()
 
@@ -55,6 +52,7 @@ class StarterActivity : AppBarActivity() {
 
         val binding = StarterActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
         viewModel.output.observe(this) {
             val output = it.data!!.trim()
             if (output.endsWith("info: shizuku_starter exit with 0")) {
@@ -107,17 +105,6 @@ class StarterActivity : AppBarActivity() {
     }
 }
 
-private fun isSMTVulnerable(): Boolean {
-    try {
-        val smtVersion = application.packageManager
-            .getPackageInfo("com.samsung.SMT", PackageManager.GET_META_DATA)
-            .versionCode
-        return (300200002 == smtVersion)
-    } catch (e: PackageManager.NameNotFoundException) {
-        return false
-    }
-}
-
 private class ViewModel(context: Context, root: Boolean, host: String?, port: Int) : androidx.lifecycle.ViewModel() {
 
     private val sb = StringBuilder()
@@ -151,62 +138,22 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
     }
 
     private fun startRoot() {
-        sb.append("Trying to start with root...").append('\n').append('\n')
+        sb.append("Starting with root...").append('\n').append('\n')
         postResult()
 
         GlobalScope.launch(Dispatchers.IO) {
-            Starter.writeDataFiles(application, true) ?: run {
-                sb.appendLine("Unable to write files")
-                postResult()
-                return@launch
-            }
-
             if (!Shell.rootAccess()) {
                 Shell.getCachedShell()?.close()
                 sb.append('\n').append("Can't open root shell, try again...").append('\n')
-
                 postResult()
-                if (!Shell.rootAccess())
+
+                if (!Shell.rootAccess()) {
                     sb.append('\n').append("Still not :(").append('\n')
-
-                if (!isSMTVulnerable()) {
                     postResult(NotRootedException())
-                    return@launch
-                } else {
-                    sb.appendLine("Found vulnerable SMT version").append('\n')
-                    postResult()
-
-                    val ttsIntent = Intent()
-                    ttsIntent.component =
-                        ComponentName("com.samsung.SMT", "com.samsung.SMT.SamsungTTSService")
-                    application.stopService(ttsIntent)
-                    delay(500L)
-                    application.startService(ttsIntent)
-
-                    delay(1500L)
-
-                    val intent = Intent("com.samsung.SMT.ACTION_INSTALL_FINISHED")
-                    val s = ArrayList<CharSequence>()
-                    val mstring = application.applicationInfo.nativeLibraryDir + "/libmstring.so"
-                    intent.putExtra("BROADCAST_CURRENT_LANGUAGE_INFO", s)
-                    intent.putExtra("BROADCAST_CURRENT_LANGUAGE_VERSION", "99999")
-                    intent.putCharSequenceArrayListExtra("BROADCAST_DB_FILELIST", s)
-                    intent.putExtra("SMT_ENGINE_VERSION", 0x2590cd5b)
-                    intent.putExtra("SMT_ENGINE_PATH", mstring)
-                    application.sendBroadcast(intent)
-
-                    sb.appendLine("Sent data to com.samsung.SMT")
-                    postResult()
-
-                    delay(3000L)
-
-                    sb.appendLine("info: shizuku_starter exit with 0")
-                    postResult()
-
                     return@launch
                 }
             }
-
+            Starter.writeDataFiles(application)
             Shell.su(Starter.dataCommand).to(object : CallbackList<String?>() {
                 override fun onAddElement(s: String?) {
                     sb.append(s).append('\n')

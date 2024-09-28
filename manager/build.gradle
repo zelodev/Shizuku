@@ -104,10 +104,20 @@ materialThemeBuilder {
     generateTextColors = true
 }
 
+def getCurrentFlavour() {
+    String flavorName
+    android.applicationVariants.configureEach { variant ->
+        if (variant.versionName.toLowerCase().contains("user"))
+            flavorName = "user"
+        else flavorName = "dev"
+    }
+    return flavorName
+}
+
 def collapseReleaseResourceNames = task('collapseReleaseResourceNames').doLast {
     def aapt2 = Paths.get(project.android.sdkDirectory.path, 'build-tools', project.android.buildToolsVersion, 'aapt2')
     def zip = Paths.get(project.buildDir.path, 'intermediates',
-            'optimized_processed_res', 'release', 'resources-release-optimize.ap_')
+            'optimized_processed_res', "${getCurrentFlavour()}Release", "resources-${getCurrentFlavour()}-release-optimize.ap_")
     def optimized = new File("${zip}.opt")
     def cmd = exec {
         commandLine aapt2, 'optimize', '--collapse-resource-names',
@@ -119,6 +129,12 @@ def collapseReleaseResourceNames = task('collapseReleaseResourceNames').doLast {
         delete(zip)
         optimized.renameTo("$zip")
     }
+}
+
+afterEvaluate {
+    tasks.getByName("optimize${getCurrentFlavour().capitalize()}ReleaseResources").finalizedBy(collapseReleaseResourceNames)
+    tasks.getByName("pre${getCurrentFlavour().capitalize()}ReleaseBuild").dependsOn(':shell:assembleRelease')
+    tasks.getByName("pre${getCurrentFlavour().capitalize()}DebugBuild").dependsOn(':shell:assembleDebug')
 }
 
 android.applicationVariants.configureEach { variant ->
